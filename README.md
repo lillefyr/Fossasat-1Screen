@@ -13,7 +13,7 @@ The micro-controllers are connected via I2C.
 ## Software
 
 Software is developen with the Arduino GUI and consist of 3 repositories.
-This repository contains the display code, and can be utilised with other micro-controllers via I2C.
+https://github.com/lillefyr/Fossasat-1Screen contains the display code, and can be utilised with other micro-controllers via I2C.
 
 https://github.com/lillefyr/Fossasat-1Ground contains the ground station code.
 
