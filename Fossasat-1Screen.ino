@@ -139,8 +139,15 @@ void displayStatus( int Online, int Transceiver, int Deployed, int Tuning, int P
   tft.fillRect(10,205,300,20,WHITE); tft.setCursor(10,205); tft.println("RSSI: "+RSSI);
   tft.setCursor(150,205); tft.println("SNR: "+SNR+" %");
 
-  createFilledRect(240, 140, 70, 30, YELLOW, RED);
-  setButtonText(252, 148, "PING", BLACK);
+  if ( waitPong == 0 ) {
+    createFilledRect(240, 140, 70, 30, YELLOW, RED);
+    setButtonText(252, 148, "PING", BLACK);
+  }
+  else
+  {
+    createFilledRect(240, 140, 70, 30, RED, BLACK);
+    setButtonText(252, 148, "PING", YELLOW);
+  }
 }
 
 void requestEvent() {
@@ -240,10 +247,13 @@ void loop(){
     // clicked on button and repeat clicks will be igtnored 10 seconds
     if (( col > 250) && (col < 320) && (row > 150) && (row < 180) && (waitPong == 0)) {
       Serial.println("send ping");
-      createFilledRect(240, 140, 70, 30, RED, BLACK);
-      setButtonText(252, 148, "PING", YELLOW);
+      char char_array[] = "5";
+      Wire.beginTransmission(4); // transmit to device #4
+      Wire.write(char_array);
+      Wire.endTransmission();
+      
       waitPong = 10; // wait 10 seconds
-      Wire.write("SEND PING");
+      newDataAvailable = 1;
     }
     else { Serial.print(row); Serial.print(" "); Serial.print(col); Serial.print(" "); Serial.print(waitPong);
     Serial.println(" ( col > 250) && (col < 320) && (row > 150) && (row < 180) && (waitPong == 0)"); }
@@ -251,9 +261,10 @@ void loop(){
   }
   
   if (( waitPong < 2 ) && (waitPong != 0)) {
-    Serial.println("ping sent");
-    createFilledRect(240, 140, 70, 30, YELLOW, RED);
-    setButtonText(252, 148, "PING", BLACK);
+      newDataAvailable = 1;
+//    Serial.println("ping sent");
+//    createFilledRect(240, 140, 70, 30, YELLOW, RED);
+//    setButtonText(252, 148, "PING", BLACK);
   }
   if ( waitPong > 0 ) { waitPong--; }
   delay(50);
