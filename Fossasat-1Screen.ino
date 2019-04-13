@@ -10,7 +10,7 @@
 //    https://github.com/JoaoLopesF/SPFD5408
 //    https://gist.github.com/calogerus/79ef0c4cf04d9ea33dae9fd77a3a7316
 //    
-//    Other shileds will surely work differently.
+//    Other shields will surely work differently.
 //
 ///////////////
 
@@ -67,7 +67,7 @@ TouchScreen ts = TouchScreen(XP, YP, XM, YM, SENSIBILITY);
 #define LCD_CD A2
 #define LCD_WR A1
 #define LCD_RD A0
-#define LCD_RESET A4 // Optional : otherwise connect to Arduino's reset pin
+#define LCD_RESET 12 // Optional : otherwise connect to Arduino's reset pin
 
 // Assign human-readable names to some common 16-bit color values:
 #define BLACK   0x0000
@@ -103,25 +103,22 @@ String B  = "0.0";
 String TS = "0.0";
 String RC = "0";
 String DS = "0";
+uint32_t timer;
+uint32_t waitPongTimer;
 
 void displayStatus( int Online, int Transceiver, int Deployed, int Tuning, int PongRec, int Transmitting, String RSSI, String SNR, String BC, String B, String TS, String RC) {
+  Serial.println("+++++++++");
   Serial.println("displayStatus");
   
-  tft.reset();
-  tft.begin(0x9341);
-  tft.setRotation(3);
-  
-  Serial.println(F("TFT LCD is ready"));
-  Serial.print("TFT size is ");
-  Serial.print(tft.width()); 
-  Serial.print("x"); 
-  Serial.println(tft.height());
+  Serial.println("RSSI="+RSSI+" SNR="+SNR+" BC="+BC+" B="+B+" TS="+TS+" RC="+RC);
 
-  tft.fillScreen(WHITE);
-  tft.setTextColor(BLACK);
-  tft.setTextSize (2);
-  
+  // Prepare the screen
   tft.setCursor( 10, 0); tft.println("Fossasat-1  GroundStation");
+  tft.setCursor(10,125); tft.println("Battery:");
+  tft.setCursor(10,145); tft.println("Battery:");
+  tft.setCursor(10,165); tft.println("Solar:");
+  tft.setCursor(10,185); tft.println("Resets:");
+
   statusDisplay( 10,40,Online,"Online");
   statusDisplay(150,40,Transceiver,"Transceiver");
   statusDisplay( 10,60,Deployed,"Deployed");
@@ -129,16 +126,16 @@ void displayStatus( int Online, int Transceiver, int Deployed, int Tuning, int P
   statusDisplay( 10,80,PongRec,"PongRec");
   statusDisplay(150,80,Transmitting,"Transmitting");
 
-  Serial.println("RSSI="+RSSI+" SNR="+SNR+" BC="+BC+" B="+B+" TS="+TS+" RC="+RC);
-
-  tft.setCursor(10,125); tft.println("Battery:"); tft.fillRect(150,125,150,20,WHITE); tft.setCursor(150,125); tft.println(BC+" V");
-  tft.setCursor(10,145); tft.println("Battery:"); tft.fillRect(110,145,150,20,WHITE); tft.setCursor(150,145); tft.println(B+" A");
-  tft.setCursor(10,165); tft.println("Solar:");   tft.fillRect(110,165,150,20,WHITE); tft.setCursor(150,165); tft.println(TS+" V");
-  tft.setCursor(10,185); tft.println("Resets:");  tft.fillRect(110,185,150,20,WHITE); tft.setCursor(150,185); tft.println(RC);
+  tft.fillRect(150,125,150,20,WHITE); tft.setCursor(150,125); tft.println(BC+" V");
+  tft.fillRect(110,145,150,20,WHITE); tft.setCursor(150,145); tft.println(B+" A");
+  tft.fillRect(110,165,150,20,WHITE); tft.setCursor(150,165); tft.println(TS+" V");
+  tft.fillRect(110,185,150,20,WHITE); tft.setCursor(150,185); tft.println(RC);
   
   tft.fillRect(10,205,300,20,WHITE); tft.setCursor(10,205); tft.println("RSSI: "+RSSI);
   tft.setCursor(150,205); tft.println("SNR: "+SNR+" %");
 
+  Serial.print("         waitPong="); Serial.println(waitPong);
+  
   if ( waitPong == 0 ) {
     createFilledRect(240, 140, 70, 30, YELLOW, RED);
     setButtonText(252, 148, "PING", BLACK);
@@ -148,10 +145,6 @@ void displayStatus( int Online, int Transceiver, int Deployed, int Tuning, int P
     createFilledRect(240, 140, 70, 30, RED, BLACK);
     setButtonText(252, 148, "PING", YELLOW);
   }
-}
-
-void requestEvent() {
-  Wire.write("requestEvent "); // respond with message of 6 bytes
 }
 
 // Format of data received on wire
@@ -164,20 +157,20 @@ void receiveEvent(int bytes) {
     c = Wire.read();
     s += c;
   }
-  Serial.println(s);
-  
+ 
   int indexOfS1 = s.indexOf(':');
   String field = s.substring(0, indexOfS1);
   String data = s.substring(indexOfS1+1, s.length());
 
-  Serial.print("field="); Serial.print(field); Serial.print(" data="); Serial.println(data);
-
+  Serial.print("event: ");Serial.print(field); Serial.print(" ");Serial.println(data);
+//  Serial.println(s);
   // extract data from message
-  newDataAvailable = 1; // We are optimists
-  if ( field == "No") { Serial.println("No data"); return; }
+  newDataAvailable = 0;
+  if ( field == "GO") { newDataAvailable = 1; return; }
 
+  if ( ID == "6" ) { Serial.println("         PONG received (1)"); }
   // status from satellite
-  if ( field == "ID") { ID = data; return; }
+  if ( field == "ID") { ID = data; newDataAvailable = 1; return; } // as soon as we get an ID, update screen
   if ( field == "BC") { BC = data; return; }
   if ( field == "B")  { B  = data; return; }
   if ( field == "TS") { TS = data; return; }
@@ -185,14 +178,10 @@ void receiveEvent(int bytes) {
   if ( field == "DS") { DS = data; return; }
 
   // status from groundstation
-  if ( field == "RS") { RSSI = data; return; }
-  if ( field == "SN") { SNR = data; return; }
-  if ( field == "ONLINE") { Online = GREEN; return; }
-  if ( field == "OFFLINE") { Online = RED; return; }
-  if ( field == "TUNINGON") { Tuning = GREEN; return; }
-  if ( field == "TUNINGOFF") { Tuning = RED; return; }
-  Serial.println(s);
-  newDataAvailable = 0; // Oh, no data received
+  if ( field == "RSSI") { RSSI = data; return; }
+  if ( field == "SNR") { SNR = data; return; }
+  if ( field == "ONLINE") { Online = RED; if ( data == "0" ) { Online = GREEN; } return; }
+  if ( field == "TUNING") { Tuning = RED; if ( data == "0" ) { Tuning = GREEN; } return; }
   return;
 }
 //-- Setup
@@ -204,12 +193,18 @@ void setup(void) {
   Serial.begin(115200);
 
   Wire.begin(4);                // join i2c bus with address #4
-  Wire.onRequest(requestEvent); // register event 
   Wire.onReceive(receiveEvent);
   
   tft.reset();
   tft.begin(0x9341);
   tft.setRotation(3);
+
+  // useless debug text
+  Serial.println(F("TFT LCD is ready"));
+  Serial.print("TFT size is ");
+  Serial.print(tft.width()); 
+  Serial.print("x"); 
+  Serial.println(tft.height());
 
   tft.fillScreen(WHITE);
   tft.setTextColor(BLACK);
@@ -228,17 +223,18 @@ int16_t col;
 
 void loop(){
   if ( newDataAvailable == 1 ){
+    if (ID == "7") { Transmitting = GREEN; } else { Transmitting = RED; }
     if (ID == "7") { Transceiver = GREEN; }
     if (ID == "8") { Transceiver = RED; }
-    if (DS == 0) { Deployed = RED; } else { Deployed = GREEN; }
-    Tuning = GREEN;
-    if (ID == "6") { PongRec = GREEN; } else { PongRec = RED; }
-    if (ID == "7") { Transmitting = GREEN; } else { Transmitting = RED; }
-  
+    if (DS ==  0) { Deployed = RED; } else { Deployed = GREEN; }
+    if ( ID == "6" ) { Serial.println("         PONG received (2)"); }
+    if (ID == "6") { PongRec = GREEN; waitPong = 1; timer = millis() + 10000; } //green for 10 seconds 
+    if ( timer < millis() ) { PongRec = RED; }
+
     displayStatus( Online, Transceiver, Deployed, Tuning, PongRec, Transmitting, RSSI, SNR, BC, B, TS, RC);
     newDataAvailable = 0;
   }
-
+  
   touch = ReadTouch() ; // returns integer with row and col
   if(touch > 0) {
     row = touch / 1000;
@@ -246,27 +242,30 @@ void loop(){
 
     // clicked on button and repeat clicks will be igtnored 10 seconds
     if (( col > 250) && (col < 320) && (row > 150) && (row < 180) && (waitPong == 0)) {
+      Serial.println("PRESSED");
+      waitPong = 10; // wait max 10 seconds
+      waitPongTimer = millis();
+    }
+    else { Serial.print(row); Serial.print(" "); Serial.print(col); Serial.println(" ( col > 250) && (col < 320) && (row > 150) && (row < 180)"); }
+    touch = 0;
+  }
+  
+  if (( waitPong > 0 ) && ( waitPongTimer < millis()) && ( PongRec == RED )) {
+    
       Serial.println("send ping");
       char char_array[] = "5";
       Wire.beginTransmission(4); // transmit to device #4
       Wire.write(char_array);
       Wire.endTransmission();
-      
-      waitPong = 10; // wait 10 seconds
-      newDataAvailable = 1;
-    }
-    else { Serial.print(row); Serial.print(" "); Serial.print(col); Serial.print(" "); Serial.print(waitPong);
-    Serial.println(" ( col > 250) && (col < 320) && (row > 150) && (row < 180) && (waitPong == 0)"); }
-    touch = 0;
+
+      waitPong--;
+      waitPongTimer = millis() + 1000; // two a seconds
   }
+  //else
+  //{
+  //  waitPong = 0;
+  //}
   
-  if (( waitPong < 2 ) && (waitPong != 0)) {
-      newDataAvailable = 1;
-//    Serial.println("ping sent");
-//    createFilledRect(240, 140, 70, 30, YELLOW, RED);
-//    setButtonText(252, 148, "PING", BLACK);
-  }
-  if ( waitPong > 0 ) { waitPong--; }
   delay(50);
 }
 
